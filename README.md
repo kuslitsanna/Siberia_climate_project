@@ -1,2 +1,2 @@
 # Siberia_climate_project
-This is a data project created in fulfilment of a data skills course
+This is a project created for a data skills course
