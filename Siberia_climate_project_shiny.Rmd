@@ -1,0 +1,235 @@
+
+
+---
+title: "Siberia Climate Project"
+subtitle: "Visualising and Forecasting the Effects of Climate Change in the Siberian Region"
+author: "Anna Kuslits"
+date: "2023-07-12"
+output: 
+  html_document:
+    css: "style.css"
+editor_options: 
+  chunk_output_type: console
+runtime: shiny
+---
+
+
+**Problem:** The effects of global climate change have been particularly severe in the Siberian region of North Asia. Frequent and intense heat waves in recent years are resulting in the rapid melting of permafrost, causing significant transformations in the region's landscape. The warming climate is creating shifts in precipitation patterns, affecting water resources and impacting ecosystems and human activities. As the release of greenhouse gases from thawing permafrost contributes to further climate change, these changes have important global implications.
+
+**Objective:** This project used historical daily weather-station observations from the Global Historical Climatology Network - Daily (GHCN-Daily) dataset hosted in [BigQuery](https://cloud.google.com/blog/products/gcp/global-historical-daily-weather-data-now-available-in-bigquery) to analyse and visualise trends in the data, and forecast potential future climatic changes in the Siberian region.
+
+**Method:**
+
+The analysis looked at 4 core elements in the GHCN dataset:
+
+|      |                                        |
+|------|----------------------------------------|
+| TMAX | maximum daily temperature in degrees C |
+| TMIN | minimum daily temperature in degrees C |
+| PRCP | daily precipitation in millimetres     |
+| SNWD | daily snow depth in millimetres        |
+
+Examined period: 1983-01-01 to 2023-07-23
+
+**Source:**
+
+Menne, M.J., I. Durre, B. Korzeniewski, S. McNeal, K. Thomas, X. Yin, S. Anthony, R. Ray, R.S. Vose, B.E.Gleason, and T.G. Houston. 2012. Global Historical Climatology Network - Daily (GHCN-Daily), Version 3.30. Distributed by NOAA National Climatic Data Center. http://doi.org/10.7289/V5D21VHZ.
+
+```{r load packages, echo=FALSE, message=FALSE, warning=FALSE}
+pacman::p_load(shiny,
+               leaflet,
+               ggplot2,
+               shinythemes,
+               sf)
+
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE)
+```
+
+
+## Temperature Anomalies
+
+Locations closer to the Arctic Circle have experienced a particularly severe increase in yearly average temperatures over the examined period. With the applications below, you can explore the uneven impact of global climate change on the average yearly temperatures observed in the Siberian region between 1983 and 2022.
+
+```{r temperature anomaly app, echo=FALSE, message=FALSE, warning=FALSE}
+load(file = "outputs/anomaly_ready.RData")
+ui <- fluidPage(
+  theme = shinytheme("slate"),
+  titlePanel("Station Selector"),
+  sidebarLayout(
+    sidebarPanel(
+      tags$h5("Click on the map markers to select and unselect weather stations:"),
+      leafletOutput("mymap"),
+      width = 5),
+ 
+    mainPanel(
+      plotOutput("lineChart"),
+      tags$h6("*Where the recorded observations were insufficient to calculate the yearly average temperature, the last valid observation was taken forward."),
+      width = 7
+      )
+    
+    ),
+  tags$h5("The graph shows temperature anomalies measured at the selected weather stations. The calculation of temperature anomaly values is based on the 1983-2022 mean as the baseline. Positive values indicate observed temperatures that are higher, while negative values indicate observed temperatures that are lower than the 40-year average baseline.")
+  )
+
+
+server <- function(input, output) {
+  output$mymap <- renderLeaflet({ 
+    leaflet() %>%
+    setView(lng = 115, lat = 65, zoom = 2) %>%
+    addProviderTiles(providers$OpenStreetMap.France,
+                     options = providerTileOptions(opacity = 0.75)) %>%
+      addCircleMarkers(data = anomaly_ready,
+                       radius = 6,
+                       fillOpacity = 0.01,
+                       weight = 1,
+                       label = lapply(seq_len(nrow(anomaly_ready)), function(i) {
+                         HTML(paste(
+                           "<div style='line-height: 0.8; font-size: 14px;'>",
+                           "<b>", anomaly_ready$name[i], "</b><br>",
+                           "<span style='font-size: 10px;'>(",
+                           anomaly_ready$latitude[i], ", ",
+                           anomaly_ready$longitude[i], ")</span>", 
+                           sep = ""
+                         )
+                         )
+                       })
+                       ,
+                       labelOptions = labelOptions(
+                         style = list("color" = "#ECF0F1",
+                                      "-webkit-text-fill-color" = "#212F3C",
+                                      "-webkit-text-stroke" = "0.3px")
+                         )
+                       )
+    })
+               
+ 
+  selected_locations <- reactiveVal()  # Initialize as an empty vector
+  
+
+  observeEvent(input$mymap_marker_click, {
+    click <- input$mymap_marker_click
+    if (!is.null(click)) {
+      if (click$lat %in% selected_locations()) {
+        selected_locations(selected_locations()[selected_locations() != click$lat])
+      } else {
+        selected_locations(unique(c(selected_locations(), click$lat)))
+      }
+      
+      proxy <- leafletProxy("mymap")
+      
+      proxy %>% clearMarkers()  # Clear all markers
+      
+  # Rebuild the circle markers layer with updated fillOpacity
+      proxy %>% addCircleMarkers(data = anomaly_ready,
+                                 radius = 6,
+                                 fillOpacity = ifelse(anomaly_ready$latitude %in% selected_locations(), 0.2, 0.01),
+                                 weight = 1,
+                                 label = lapply(seq_len(nrow(anomaly_ready)), function(i) {
+                                   HTML(paste(
+                                     "<div style='line-height: 0.8; font-size: 14px;'>",
+                                     "<b>", anomaly_ready$name[i], "</b><br>",
+                                     "<span style='font-size: 10px;'>(",
+                                     anomaly_ready$latitude[i], ", ",
+                                     anomaly_ready$longitude[i], ")</span>", 
+                                     sep = ""
+                                   )
+                                   )
+                                 })
+                                 ,
+                                 labelOptions = labelOptions(
+                                   style = list("color" = "#ECF0F1",
+                                                "-webkit-text-fill-color" = "#212F3C",
+                                                "-webkit-text-stroke" = "0.3px")
+                                 )
+                                   )
+      
+    }
+
+
+
+  })
+  
+  
+  # Generate plot
+  output$lineChart <- renderPlot({
+    data <- anomaly_ready[anomaly_ready$latitude %in% selected_locations(), ]
+    ggplot(data, aes(x = year, y = TAVG, color = name)) +
+      geom_line() +
+        labs(title = "Time Series Plot", 
+             x = "Year", 
+             y = "Temperature Anomaly (\u00B0C)*", 
+             color = "Location") +
+        theme_gray()
+    
+  })
+}
+
+
+
+# Run the application 
+shinyApp(ui, server, options = list(height = "700px", width = "1200px"))
+
+```
+
+
+```{r temp anomaly map, message=FALSE, warning=FALSE}
+ui <- fluidPage(
+  titlePanel("Time Slider"),
+  theme = shinytheme("spacelab"),
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("year", "Year:",
+                  min = min(anomaly_ready$year),
+                  max = max(anomaly_ready$year),
+                  value = 2003,
+                  step = 1),
+      tags$h5("Use the slider to explore the progression of changing temperature anomalies in time. Temperatures close to the 1083-2022 mean baseline are shown in white. Higher than baseline temperatures are shown in red and lower than baseline temperatures are shown in blue.")
+    ),
+    
+    mainPanel(
+      leafletOutput("mymap2", width="750px", height = "650px")
+    )
+  )
+)
+
+server <- function(input, output) {
+  
+  filteredData <- reactive({
+    anomaly_ready[anomaly_ready$year %in% input$year, ]
+  })
+  colorScale <- colorNumeric(palette = colorRampPalette(c("#327DE3","#8FBBF7", "white", "#FAAC2B", "#F26024", "#FE2926"))(100), 
+                               domain = c(min(anomaly_ready$TAVG), max(anomaly_ready$TAVG)))
+  output$mymap2 <- renderLeaflet({ 
+    leaflet() %>%
+      setView(lng = 115, lat = 68, zoom = 3) %>%
+      addProviderTiles(providers$OpenStreetMap.France,
+                       options = providerTileOptions(opacity = 0.65))%>%
+      addLegend(position = "topright",
+                pal = colorScale,
+                values = anomaly_ready$TAVG,
+                title = "Anomaly (\u00B0C)")
+  })
+  
+  observe({
+    leafletProxy("mymap2") %>%
+      clearMarkers() %>%
+      addCircleMarkers(data = filteredData(),
+                       radius = 14,
+                       fillColor = ~colorScale(TAVG),
+                       color = ~colorScale(TAVG),
+                       fillOpacity = 1) 
+  })
+}
+
+shinyApp(ui, server, options = list(height = "800px", width = "1200px"))
+
+
+
+```
+

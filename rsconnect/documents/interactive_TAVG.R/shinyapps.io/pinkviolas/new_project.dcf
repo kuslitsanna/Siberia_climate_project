@@ -1,0 +1,14 @@
+name: new_project
+title: new_project
+username:
+account: pinkviolas
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 9597428
+bundleId: 7562460
+url: https://pinkviolas.shinyapps.io/new_project/
+when: 1691932046.06979
+lastSyncTime: 1691932046.06985
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: .RData|backup_workspace_chunk1.RData|backup_workspace_chunk2.RData|backup_workspace_chunk3.1.RData|backup_workspace_chunk3.RData|chuck_3_exploratory_analysis.R|chunk_1_identifying_stations.R|chunk_2_importing_weather_observations.R|LICENSE|README.md|Siberia_shape.kml|outputs
